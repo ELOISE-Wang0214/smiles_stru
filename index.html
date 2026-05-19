@@ -249,6 +249,32 @@
       background: #ffffff;
     }
 
+    .download-card {
+      display: grid;
+      gap: 12px;
+      border-top: 1px solid var(--line);
+      padding: 18px 20px 20px;
+      background: rgba(246, 250, 255, 0.96);
+    }
+
+    .download-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .secondary-button {
+      border: 1px solid var(--line);
+      color: var(--accent-strong);
+      background: #fff;
+    }
+
+    .secondary-button:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: #fff;
+    }
+
     .editor-row {
       display: flex;
       flex-wrap: wrap;
@@ -361,6 +387,14 @@
           <div class="name-card">
             <p class="name-label">IUPAC name</p>
             <p class="iupac-name" id="iupac-name">ethanol</p>
+          </div>
+          <div class="download-card">
+            <p class="name-label">Downloads</p>
+            <div class="download-row">
+              <button type="button" class="secondary-button" id="download-png-button" disabled>Download PNG</button>
+              <button type="button" class="secondary-button" id="download-jpg-button" disabled>Download JPG</button>
+              <button type="button" class="secondary-button" id="download-xyz-button" disabled>Download XYZ</button>
+            </div>
           </div>
           <div class="editor-card">
             <p class="name-label">Atom editor</p>
@@ -477,8 +511,14 @@
     const selectedAtomEl = document.querySelector("#selected-atom");
     const atomSelect = document.querySelector("#atom-select");
     const applyAtomButton = document.querySelector("#apply-atom-button");
+    const downloadPngButton = document.querySelector("#download-png-button");
+    const downloadJpgButton = document.querySelector("#download-jpg-button");
+    const downloadXyzButton = document.querySelector("#download-xyz-button");
     let atomTokens = [];
     let selectedAtom = null;
+    let currentCid = "";
+    let currentIupacName = "";
+    let currentSmiles = "";
 
     const drawer = new SmilesDrawer.SvgDrawer({
       width: 760,
@@ -498,15 +538,23 @@
     function hidePubChemLink() {
       pubchemLink.hidden = true;
       pubchemLink.removeAttribute("href");
+      currentCid = "";
     }
 
     function showPubChemLink(cid) {
       pubchemLink.href = `https://pubchem.ncbi.nlm.nih.gov/compound/${encodeURIComponent(cid)}`;
       pubchemLink.hidden = false;
+      currentCid = String(cid);
     }
 
     function clearCanvas() {
       structureSvg.replaceChildren();
+    }
+
+    function setDownloadButtonsEnabled(isEnabled) {
+      downloadPngButton.disabled = !isEnabled;
+      downloadJpgButton.disabled = !isEnabled;
+      downloadXyzButton.disabled = !isEnabled;
     }
 
     function resetAtomEditor() {
@@ -601,6 +649,8 @@
           atomTokens = tokenizeAtoms(smiles);
           drawer.draw(tree, "structure-svg", "light");
           addAtomHotspots();
+          currentSmiles = smiles;
+          setDownloadButtonsEnabled(true);
           emptyState.hidden = true;
           structureSvg.hidden = false;
           resolve();
@@ -632,6 +682,154 @@
       };
     }
 
+    function getFileStem() {
+      const base = currentIupacName || currentSmiles || "structure";
+      return base.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "structure";
+    }
+
+    function triggerDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function getCleanSvgMarkup() {
+      const clone = structureSvg.cloneNode(true);
+      clone.querySelectorAll("[data-role='atom-hotspots']").forEach((layer) => layer.remove());
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      clone.setAttribute("width", "1200");
+      clone.setAttribute("height", "900");
+      clone.style.background = "#ffffff";
+      return new XMLSerializer().serializeToString(clone);
+    }
+
+    function getSvgCanvas(backgroundColor) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        const svgBlob = new Blob([getCleanSvgMarkup()], { type: "image/svg+xml;charset=utf-8" });
+        const url = URL.createObjectURL(svgBlob);
+        const canvas = document.createElement("canvas");
+        canvas.width = 1200;
+        canvas.height = 900;
+
+        image.onload = () => {
+          const context = canvas.getContext("2d");
+          context.fillStyle = backgroundColor;
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(url);
+          resolve(canvas);
+        };
+
+        image.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error("Could not export the current structure image."));
+        };
+
+        image.src = url;
+      });
+    }
+
+    async function downloadStructureImage(format) {
+      const isJpg = format === "jpg";
+      const canvas = await getSvgCanvas("#ffffff");
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          setStatus("The structure image could not be exported.", true);
+          return;
+        }
+        triggerDownload(blob, `${getFileStem()}.${format}`);
+        setStatus(`Downloaded ${format.toUpperCase()} structure image.`);
+      }, isJpg ? "image/jpeg" : "image/png", 0.94);
+    }
+
+    async function fetchPubChem3dXyz(cid) {
+      const response = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${encodeURIComponent(cid)}/record/SDF?record_type=3d`);
+      if (!response.ok) {
+        throw new Error("PubChem 3D data was not available.");
+      }
+
+      const sdf = await response.text();
+      const lines = sdf.split(/\r?\n/);
+      const countsLine = lines[3] || "";
+      const atomCount = Number.parseInt(countsLine.slice(0, 3), 10);
+
+      if (!Number.isFinite(atomCount) || atomCount <= 0) {
+        throw new Error("PubChem 3D data could not be parsed.");
+      }
+
+      const atoms = lines.slice(4, 4 + atomCount).map((line) => ({
+        x: Number.parseFloat(line.slice(0, 10)),
+        y: Number.parseFloat(line.slice(10, 20)),
+        z: Number.parseFloat(line.slice(20, 30)),
+        element: line.slice(31, 34).trim()
+      })).filter((atom) => atom.element && Number.isFinite(atom.x) && Number.isFinite(atom.y) && Number.isFinite(atom.z));
+
+      if (!atoms.length) {
+        throw new Error("PubChem 3D data did not include atom coordinates.");
+      }
+
+      return formatXyz(atoms, `${currentIupacName || currentSmiles} - PubChem 3D conformer`);
+    }
+
+    function buildFlatXyz() {
+      const vertices = drawer?.preprocessor?.graph?.vertices || [];
+      const atoms = vertices.map((vertex, index) => {
+        const token = atomTokens[index];
+        if (!token || !vertex?.position) {
+          return null;
+        }
+
+        return {
+          element: getAtomElement(token),
+          x: vertex.position.x / 35,
+          y: -vertex.position.y / 35,
+          z: 0
+        };
+      }).filter(Boolean);
+
+      if (!atoms.length) {
+        throw new Error("No atom coordinates are available for XYZ export.");
+      }
+
+      return formatXyz(atoms, `${currentIupacName || currentSmiles} - flat initial coordinates`);
+    }
+
+    function formatXyz(atoms, comment) {
+      const body = atoms.map((atom) => {
+        const x = atom.x.toFixed(6).padStart(12, " ");
+        const y = atom.y.toFixed(6).padStart(12, " ");
+        const z = atom.z.toFixed(6).padStart(12, " ");
+        return `${atom.element.padEnd(3, " ")}${x}${y}${z}`;
+      }).join("\n");
+
+      return `${atoms.length}\n${comment}\n${body}\n`;
+    }
+
+    async function downloadXyzFile() {
+      let xyz;
+      let source = "flat initial XYZ";
+
+      if (currentCid) {
+        try {
+          xyz = await fetchPubChem3dXyz(currentCid);
+          source = "PubChem 3D XYZ";
+        } catch (error) {
+          xyz = buildFlatXyz();
+        }
+      } else {
+        xyz = buildFlatXyz();
+      }
+
+      triggerDownload(new Blob([xyz], { type: "chemical/x-xyz;charset=utf-8" }), `${getFileStem()}.xyz`);
+      setStatus(`Downloaded ${source}.`);
+    }
+
     async function handleSubmit(event) {
       event.preventDefault();
       const smiles = input.value.trim();
@@ -639,11 +837,14 @@
       if (!smiles) {
         setStatus("Please enter a SMILES string.", true);
         hidePubChemLink();
+        setDownloadButtonsEnabled(false);
         return;
       }
 
       drawButton.disabled = true;
       hidePubChemLink();
+      currentIupacName = "";
+      setDownloadButtonsEnabled(false);
       nameEl.textContent = "Looking up name...";
       setStatus("Drawing structure...");
 
@@ -653,6 +854,7 @@
         nameEl.textContent = "No structure drawn";
         setStatus("That SMILES string could not be drawn. Please check the input.", true);
         hidePubChemLink();
+        setDownloadButtonsEnabled(false);
         drawButton.disabled = false;
         return;
       }
@@ -662,6 +864,7 @@
       try {
         const { cid, iupacName } = await fetchPubChemRecord(smiles);
         nameEl.textContent = iupacName || "IUPAC name not found";
+        currentIupacName = iupacName || "";
         if (cid) {
           showPubChemLink(cid);
         }
@@ -685,6 +888,9 @@
     }
 
     applyAtomButton.addEventListener("click", applyAtomChange);
+    downloadPngButton.addEventListener("click", () => downloadStructureImage("png"));
+    downloadJpgButton.addEventListener("click", () => downloadStructureImage("jpg"));
+    downloadXyzButton.addEventListener("click", downloadXyzFile);
     form.addEventListener("submit", handleSubmit);
     window.addEventListener("load", () => form.requestSubmit());
   </script>

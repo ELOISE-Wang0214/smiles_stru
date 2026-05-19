@@ -8,6 +8,7 @@ A simple single-page website for drawing molecular structures from SMILES string
 - Look up the English IUPAC/systematic name through PubChem.
 - Open the matching PubChem compound page when PubChem finds a result.
 - Click an atom in the structure, choose from a broad element list, and redraw the edited molecule.
+- Download the current structure as PNG, JPG, or XYZ.
 - Handles invalid SMILES input with a clear message.
 
 ## How to Use
@@ -26,3 +27,4 @@ This draws ethanol and displays the IUPAC name `ethanol`.
 
 - Structure rendering uses the local `smiles-drawer.min.js` file.
 - IUPAC name lookup requires an internet connection because it queries PubChem.
+- XYZ export uses PubChem 3D coordinates when available, with a flat initial-coordinate fallback.
