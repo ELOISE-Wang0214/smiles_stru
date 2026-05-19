@@ -30,3 +30,4 @@ This draws ethanol and displays the IUPAC name `ethanol`.
 - IUPAC name lookup requires an internet connection because it queries PubChem.
 - XYZ export uses PubChem 3D coordinates when available, with a flat initial-coordinate fallback.
 - Reverse recognition converts MOL2, PDB, and XYZ into temporary SDF before querying PubChem. XYZ and PDB files without bond records use distance-based initial bond inference.
+- Transition-metal complexes in XYZ/PDB may require explicit bonds, charges, and coordination details before PubChem can return a reliable SMILES.
