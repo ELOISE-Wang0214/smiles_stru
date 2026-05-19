@@ -8,15 +8,16 @@
   <style>
     :root {
       color-scheme: light;
-      --ink: #17211d;
-      --muted: #63706a;
-      --line: #d9e2dd;
+      --ink: #10233f;
+      --muted: #61738e;
+      --line: #d8e5f4;
       --panel: #ffffff;
-      --wash: #f5f8f6;
-      --accent: #0b7f63;
-      --accent-strong: #075f4b;
+      --wash: #f5f9ff;
+      --accent: #2368d8;
+      --accent-strong: #174ea6;
+      --accent-soft: #eaf2ff;
       --error: #b23a3a;
-      --shadow: 0 18px 55px rgba(28, 48, 40, 0.12);
+      --shadow: 0 18px 55px rgba(28, 68, 126, 0.13);
     }
 
     * {
@@ -29,15 +30,31 @@
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: var(--ink);
       background:
-        linear-gradient(145deg, rgba(11, 127, 99, 0.10), transparent 38%),
-        linear-gradient(315deg, rgba(181, 217, 204, 0.45), transparent 42%),
+        linear-gradient(145deg, rgba(35, 104, 216, 0.13), transparent 38%),
+        linear-gradient(315deg, rgba(158, 199, 255, 0.38), transparent 42%),
         var(--wash);
+    }
+
+    body::after {
+      content: "Eloise Wang";
+      position: fixed;
+      right: 22px;
+      bottom: 18px;
+      z-index: 0;
+      color: rgba(35, 104, 216, 0.18);
+      font-size: clamp(1.4rem, 4vw, 3.2rem);
+      font-weight: 850;
+      letter-spacing: 0;
+      pointer-events: none;
+      user-select: none;
     }
 
     main {
       width: min(980px, calc(100% - 32px));
       margin: 0 auto;
       padding: 48px 0;
+      position: relative;
+      z-index: 1;
     }
 
     .app-shell {
@@ -76,7 +93,7 @@
     .panel,
     .result {
       background: rgba(255, 255, 255, 0.92);
-      border: 1px solid rgba(217, 226, 221, 0.9);
+      border: 1px solid rgba(216, 229, 244, 0.95);
       box-shadow: var(--shadow);
     }
 
@@ -114,7 +131,7 @@
 
     textarea:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 4px rgba(11, 127, 99, 0.14);
+      box-shadow: 0 0 0 4px rgba(35, 104, 216, 0.14);
     }
 
     .controls {
@@ -224,6 +241,63 @@
       background: rgba(250, 252, 251, 0.96);
     }
 
+    .editor-card {
+      display: grid;
+      gap: 12px;
+      border-top: 1px solid var(--line);
+      padding: 18px 20px 20px;
+      background: #ffffff;
+    }
+
+    .editor-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .editor-field {
+      min-width: 140px;
+    }
+
+    select {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 12px;
+      color: var(--ink);
+      background: #fff;
+      font: inherit;
+      outline: none;
+    }
+
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(35, 104, 216, 0.14);
+    }
+
+    .selected-atom {
+      min-height: 24px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.94rem;
+      line-height: 1.45;
+    }
+
+    .atom-hotspot {
+      cursor: pointer;
+      fill: rgba(35, 104, 216, 0.01);
+      stroke: transparent;
+      stroke-width: 2;
+    }
+
+    .atom-hotspot:hover,
+    .atom-hotspot.selected {
+      fill: rgba(35, 104, 216, 0.13);
+      stroke: rgba(35, 104, 216, 0.82);
+    }
+
     .name-label {
       margin: 0 0 8px;
       color: var(--muted);
@@ -288,6 +362,27 @@
             <p class="name-label">IUPAC name</p>
             <p class="iupac-name" id="iupac-name">ethanol</p>
           </div>
+          <div class="editor-card">
+            <p class="name-label">Atom editor</p>
+            <p class="selected-atom" id="selected-atom">No atom selected</p>
+            <div class="editor-row">
+              <div class="editor-field">
+                <label for="atom-select">Element</label>
+                <select id="atom-select" disabled>
+                  <option value="C">C</option>
+                  <option value="N">N</option>
+                  <option value="O">O</option>
+                  <option value="S">S</option>
+                  <option value="P">P</option>
+                  <option value="F">F</option>
+                  <option value="Cl">Cl</option>
+                  <option value="Br">Br</option>
+                  <option value="I">I</option>
+                </select>
+              </div>
+              <button type="button" id="apply-atom-button" disabled>Apply atom</button>
+            </div>
+          </div>
         </section>
       </section>
     </div>
@@ -302,6 +397,11 @@
     const nameEl = document.querySelector("#iupac-name");
     const structureSvg = document.querySelector("#structure-svg");
     const emptyState = document.querySelector("#empty-state");
+    const selectedAtomEl = document.querySelector("#selected-atom");
+    const atomSelect = document.querySelector("#atom-select");
+    const applyAtomButton = document.querySelector("#apply-atom-button");
+    let atomTokens = [];
+    let selectedAtom = null;
 
     const drawer = new SmilesDrawer.SvgDrawer({
       width: 760,
@@ -332,11 +432,98 @@
       structureSvg.replaceChildren();
     }
 
+    function resetAtomEditor() {
+      selectedAtom = null;
+      atomSelect.disabled = true;
+      applyAtomButton.disabled = true;
+      selectedAtomEl.textContent = "No atom selected";
+      structureSvg.querySelectorAll(".atom-hotspot").forEach((hotspot) => {
+        hotspot.classList.remove("selected");
+      });
+    }
+
+    function getAtomElement(token) {
+      if (token.text.startsWith("[")) {
+        const match = token.text.match(/^\[(?:\d+)?([A-Z][a-z]?|[bcnops])/);
+        return match ? normalizeElement(match[1]) : "C";
+      }
+      return normalizeElement(token.text);
+    }
+
+    function normalizeElement(element) {
+      const normalized = element.charAt(0).toUpperCase() + element.slice(1).toLowerCase();
+      return normalized === "CL" ? "Cl" : normalized === "BR" ? "Br" : normalized;
+    }
+
+    function tokenizeAtoms(smiles) {
+      const tokens = [];
+      const atomPattern = /\[[^\]]+\]|Br|Cl|[B-DF-HI-NP-TV-Zbcnops]/g;
+      let match;
+
+      while ((match = atomPattern.exec(smiles)) !== null) {
+        tokens.push({
+          text: match[0],
+          start: match.index,
+          end: match.index + match[0].length
+        });
+      }
+
+      return tokens;
+    }
+
+    function replaceAtomToken(smiles, token, element) {
+      return smiles.slice(0, token.start) + element + smiles.slice(token.end);
+    }
+
+    function selectAtom(index) {
+      const token = atomTokens[index];
+      if (!token) {
+        return;
+      }
+
+      selectedAtom = { index, token };
+      atomSelect.disabled = false;
+      applyAtomButton.disabled = false;
+      atomSelect.value = getAtomElement(token);
+      selectedAtomEl.textContent = `Selected atom ${index + 1}: ${token.text}`;
+
+      structureSvg.querySelectorAll(".atom-hotspot").forEach((hotspot) => {
+        hotspot.classList.toggle("selected", Number(hotspot.dataset.atomIndex) === index);
+      });
+    }
+
+    function addAtomHotspots() {
+      const graph = drawer?.preprocessor?.graph;
+      const vertices = graph?.vertices || [];
+      const atomLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      atomLayer.setAttribute("data-role", "atom-hotspots");
+
+      vertices.forEach((vertex, index) => {
+        if (!atomTokens[index] || !vertex?.position) {
+          return;
+        }
+
+        const hotspot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        hotspot.setAttribute("class", "atom-hotspot");
+        hotspot.setAttribute("cx", vertex.position.x);
+        hotspot.setAttribute("cy", vertex.position.y);
+        hotspot.setAttribute("r", "13");
+        hotspot.dataset.atomIndex = String(index);
+        hotspot.addEventListener("click", () => selectAtom(index));
+        atomLayer.appendChild(hotspot);
+      });
+
+      structureSvg.appendChild(atomLayer);
+    }
+
     function drawSmiles(smiles) {
       return new Promise((resolve, reject) => {
         SmilesDrawer.parse(smiles, (tree) => {
           clearCanvas();
+          resetAtomEditor();
+          atomTokens = tokenizeAtoms(smiles);
           drawer.draw(tree, "structure-svg", "light");
+          addAtomHotspots();
           emptyState.hidden = true;
           structureSvg.hidden = false;
           resolve();
@@ -411,6 +598,16 @@
       }
     }
 
+    function applyAtomChange() {
+      if (!selectedAtom) {
+        return;
+      }
+
+      input.value = replaceAtomToken(input.value.trim(), selectedAtom.token, atomSelect.value);
+      form.requestSubmit();
+    }
+
+    applyAtomButton.addEventListener("click", applyAtomChange);
     form.addEventListener("submit", handleSubmit);
     window.addEventListener("load", () => form.requestSubmit());
   </script>

@@ -7,6 +7,7 @@ A simple single-page website for drawing molecular structures from SMILES string
 - Enter a SMILES string and render a 2D molecular structure.
 - Look up the English IUPAC/systematic name through PubChem.
 - Open the matching PubChem compound page when PubChem finds a result.
+- Click an atom in the structure, choose a replacement element, and redraw the edited molecule.
 - Handles invalid SMILES input with a clear message.
 
 ## How to Use
