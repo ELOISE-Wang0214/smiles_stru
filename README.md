@@ -6,7 +6,7 @@ A simple single-page website for drawing molecular structures from SMILES string
 
 - Enter a SMILES string and render a 2D molecular structure.
 - Look up the English IUPAC/systematic name through PubChem.
-- Includes an aspirin example button.
+- Open the matching PubChem compound page when PubChem finds a result.
 - Handles invalid SMILES input with a clear message.
 
 ## How to Use
